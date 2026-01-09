@@ -3,7 +3,7 @@ import numpy as np
 from database.db import get_connection
 
 # =====================================================
-# DATA LOAD (DUPLICATE SAFE)
+# DATA LOADING (DUPLICATE-SAFE BY DESIGN)
 # =====================================================
 def load_data(user_id):
     conn = get_connection()
@@ -17,13 +17,11 @@ def load_data(user_id):
         FROM daily_logs d
         JOIN sub_goals s ON d.sub_goal_id = s.id
         JOIN goals g ON s.goal_id = g.id
-        
         WHERE active=1 & g.user_id = ?
         """,
         conn,
         params=(user_id,)
     )
-
     df["date"] = pd.to_datetime(df["date"])
     return df
 
@@ -52,9 +50,7 @@ def active_days(df):
 
 
 def completion_rate(df):
-    if df.empty:
-        return 0
-    return round(df["completed"].mean() * 100, 1)
+    return round(df["completed"].mean() * 100, 1) if not df.empty else 0
 
 
 def daily_completion(df):
@@ -67,41 +63,7 @@ def daily_completion(df):
 
 
 # =====================================================
-# STREAKS
-# =====================================================
-def streaks(series):
-    dates = series.sort_values().dt.date.tolist()
-    if not dates:
-        return 0, 0
-
-    best = current = 1
-    for i in range(1, len(dates)):
-        if (dates[i] - dates[i - 1]).days == 1:
-            current += 1
-            best = max(best, current)
-        else:
-            current = 1
-
-    # current streak
-    temp = 1
-    for i in range(len(dates) - 1, 0, -1):
-        if (dates[i] - dates[i - 1]).days == 1:
-            temp += 1
-        else:
-            break
-
-    return temp, best
-
-
-def habit_streaks(df):
-    result = {}
-    for h, hdf in df[df["completed"] == 1].groupby("sub_goal"):
-        result[h] = streaks(hdf["date"])
-    return result
-
-
-# =====================================================
-# GOAL & HABIT SCORES
+# SCORES
 # =====================================================
 def goal_scores(df):
     return (
@@ -126,18 +88,48 @@ def habit_scores(df):
 
 
 # =====================================================
+# STREAKS
+# =====================================================
+def _streak_calc(dates):
+    if not dates:
+        return 0, 0
+
+    best = curr = 1
+    for i in range(1, len(dates)):
+        if (dates[i] - dates[i - 1]).days == 1:
+            curr += 1
+            best = max(best, curr)
+        else:
+            curr = 1
+
+    curr = 1
+    for i in range(len(dates) - 1, 0, -1):
+        if (dates[i] - dates[i - 1]).days == 1:
+            curr += 1
+        else:
+            break
+
+    return curr, best
+
+
+def habit_streaks(df):
+    out = {}
+    for h, hdf in df[df["completed"] == 1].groupby("sub_goal"):
+        dates = sorted(hdf["date"].dt.date.unique())
+        out[h] = _streak_calc(dates)
+    return out
+
+
+# =====================================================
 # MOMENTUM & RISK
 # =====================================================
 def momentum(df, window):
     daily = df.groupby("date")["completed"].mean()
-    if len(daily) < window:
-        return None
-    return daily.tail(window).mean()
+    return daily.tail(window).mean() if len(daily) >= window else None
 
 
 def risk_signal(df):
     daily = df.groupby("date")["completed"].mean().sort_index()
-
     if len(daily) < 10:
         return "Too early"
 
@@ -152,30 +144,39 @@ def risk_signal(df):
 
 
 # =====================================================
-# BEHAVIOR INSIGHTS (GAMIFIED)
+# BEHAVIORAL INSIGHTS (HIGH SIGNAL)
 # =====================================================
-def behavior_insights(df):
-    insights = []
+def consistency_trend(df):
+    daily = df.groupby("date")["completed"].mean()
+    if len(daily) < 7:
+        return None
 
-    if df.empty:
-        return insights
+    x = np.arange(len(daily))
+    slope = np.polyfit(x, daily.values, 1)[0]
 
-    weekday = df.copy()
-    weekday["weekday"] = weekday["date"].dt.day_name()
+    if slope > 0.01:
+        return "Improving"
+    if slope < -0.01:
+        return "Declining"
+    return "Stable"
 
-    by_day = weekday.groupby("weekday")["completed"].mean()
 
-    worst = by_day.idxmin()
-    best = by_day.idxmax()
+def fragile_habit(df):
+    rates = df.groupby("sub_goal")["completed"].mean()
+    if rates.empty:
+        return None
+    return rates.idxmin(), int(rates.min() * 100)
 
-    if by_day[best] - by_day[worst] > 0.2:
-        insights.append(
-            f"You perform best on **{best}s** and struggle on **{worst}s**."
-        )
 
-    if completion_rate(df) > 80:
-        insights.append("You’re building strong consistency. Keep the rhythm.")
-    elif completion_rate(df) < 40:
-        insights.append("Low completion detected — try shrinking your goals.")
+def perfect_days(df):
+    daily = df.groupby("date")["completed"].mean()
+    return int((daily == 1).sum()), len(daily)
 
-    return insights
+
+def weekday_pattern(df):
+    temp = df.copy()
+    temp["weekday"] = temp["date"].dt.day_name()
+    by_day = temp.groupby("weekday")["completed"].mean()
+    if len(by_day) < 5:
+        return None
+    return by_day.idxmax(), by_day.idxmin()

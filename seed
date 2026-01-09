@@ -1,0 +1,67 @@
+import sqlite3
+import random
+from datetime import date, timedelta
+
+DB_PATH = "habits.db"
+USER = "demo"
+
+# -------------------------------------------------
+# CONNECT
+# -------------------------------------------------
+conn = sqlite3.connect(DB_PATH)
+cur = conn.cursor()
+
+# -------------------------------------------------
+# GET SUB-GOALS FOR USER
+# -------------------------------------------------
+cur.execute("""
+SELECT s.id, s.name
+FROM sub_goals s
+JOIN goals g ON s.goal_id = g.id
+JOIN users u ON g.user_id = u.id
+WHERE u.username = ?
+""", (USER,))
+
+sub_goals = cur.fetchall()
+
+if not sub_goals:
+    raise Exception("No sub-goals found. Seed goals first.")
+
+# -------------------------------------------------
+# BEHAVIOR MODEL
+# -------------------------------------------------
+def completion_probability(day_index):
+    if day_index < 60:
+        return random.uniform(0.8, 0.9)
+    elif day_index < 120:
+        return random.uniform(0.6, 0.7)
+    elif day_index < 180:
+        return random.uniform(0.2, 0.4)
+    elif day_index < 260:
+        return random.uniform(0.5, 0.65)
+    else:
+        return random.uniform(0.7, 0.8)
+
+# -------------------------------------------------
+# SEED 365 DAYS
+# -------------------------------------------------
+start_date = date.today() - timedelta(days=364)
+
+for i in range(365):
+    current_date = start_date + timedelta(days=i)
+    p = completion_probability(i)
+
+    for sub_goal_id, _ in sub_goals:
+        completed = 1 if random.random() < p else 0
+
+        cur.execute("""
+        INSERT INTO daily_logs (sub_goal_id, date, completed)
+        VALUES (?, ?, ?)
+        ON CONFLICT(sub_goal_id, date)
+        DO UPDATE SET completed = excluded.completed
+        """, (sub_goal_id, current_date.isoformat(), completed))
+
+conn.commit()
+conn.close()
+
+print("✅ 1-year stress test data seeded successfully")

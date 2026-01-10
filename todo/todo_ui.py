@@ -92,6 +92,9 @@ def small_circular_progress(progress, size=80, thickness=10):
 
 def render():
     require_login()
+    from todo.todo_service import roll_over_unfinished_tasks
+    roll_over_unfinished_tasks(st.session_state.user_id)
+
     user_id = st.session_state.user_id
     today = date.today()
 

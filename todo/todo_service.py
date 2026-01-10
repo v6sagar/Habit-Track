@@ -1,4 +1,48 @@
 from database.db import get_connection
+from datetime import date, timedelta
+from database.db import get_connection
+
+
+def roll_over_unfinished_tasks(user_id):
+    """
+    Move unfinished tasks from yesterday to today.
+    This runs safely multiple times per day.
+    """
+
+    conn = get_connection()
+    cur = conn.cursor()
+
+    today = date.today().isoformat()
+    yesterday = (date.today() - timedelta(days=1)).isoformat()
+
+    # Find unfinished tasks from yesterday
+    cur.execute(
+        """
+        SELECT id
+        FROM todos
+        WHERE user_id = ?
+          AND date = ?
+          AND completed = 0
+        """,
+        (user_id, yesterday)
+    )
+
+    task_ids = [row[0] for row in cur.fetchall()]
+
+    if not task_ids:
+        return  # nothing to roll
+
+    # Move them to today
+    cur.executemany(
+        """
+        UPDATE todos
+        SET date = ?
+        WHERE id = ?
+        """,
+        [(today, tid) for tid in task_ids]
+    )
+
+    conn.commit()
 
 # -----------------------------
 # Fetch tasks

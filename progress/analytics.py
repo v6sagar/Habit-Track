@@ -17,7 +17,7 @@ def load_data(user_id):
         FROM daily_logs d
         JOIN sub_goals s ON d.sub_goal_id = s.id
         JOIN goals g ON s.goal_id = g.id
-        WHERE active=1 & g.user_id = ?
+        WHERE active=1 AND g.user_id = ?
         """,
         conn,
         params=(user_id,)
@@ -66,25 +66,39 @@ def daily_completion(df):
 # SCORES
 # =====================================================
 def goal_scores(df):
+    if df.empty:
+        return {}
+
+    temp = df.copy()
+    temp["completed"] = pd.to_numeric(temp["completed"], errors="coerce").fillna(0)
+
     return (
-        df.groupby("goal")["completed"]
+        temp.groupby("goal")["completed"]
         .mean()
         .mul(100)
-        .round(0)
+        .round()
         .astype(int)
         .to_dict()
     )
+
 
 
 def habit_scores(df):
+    if df.empty:
+        return {}
+
+    temp = df.copy()
+    temp["completed"] = pd.to_numeric(temp["completed"], errors="coerce").fillna(0)
+
     return (
-        df.groupby("sub_goal")["completed"]
+        temp.groupby("sub_goal")["completed"]
         .mean()
         .mul(100)
-        .round(0)
+        .round()
         .astype(int)
         .to_dict()
     )
+
 
 
 # =====================================================
@@ -180,3 +194,52 @@ def weekday_pattern(df):
     if len(by_day) < 5:
         return None
     return by_day.idxmax(), by_day.idxmin()
+
+
+def has_completion_today(user_id, today):
+    from database.db import get_connection
+
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        SELECT 1
+        FROM daily_logs d
+        JOIN sub_goals s ON d.sub_goal_id = s.id
+        JOIN goals g ON s.goal_id = g.id
+        WHERE g.user_id = ?
+          AND d.date = ?
+          AND d.completed = 1
+        LIMIT 1
+        """,
+        (user_id, today)
+    )
+
+    return cur.fetchone() is not None
+
+def is_grace_day(user_id, today):
+    from database.db import get_connection
+
+    conn = get_connection()
+    cur = conn.cursor()
+
+    # Earliest day user ever completed anything
+    cur.execute(
+        """
+        SELECT MIN(d.date)
+        FROM daily_logs d
+        JOIN sub_goals s ON d.sub_goal_id = s.id
+        JOIN goals g ON s.goal_id = g.id
+        WHERE g.user_id = ?
+          AND d.completed = 1
+        """,
+        (user_id,)
+    )
+
+    row = cur.fetchone()
+    if row is None or row[0] is None:
+        return False
+
+    return row[0] == today
+

@@ -1,11 +1,9 @@
 import streamlit as st
 import plotly.express as px
 import pandas as pd
-
 from progress.analytics import (
     load_data,
     get_stage,
-    active_days,
     completion_rate,
     daily_completion,
     goal_scores,
@@ -16,11 +14,13 @@ from progress.analytics import (
     consistency_trend,
     fragile_habit,
     perfect_days,
-    weekday_pattern
+    weekday_pattern,
+    is_grace_day
+
 )
 from utils.session import require_login
-
-
+from datetime import date
+from progress.analytics import has_completion_today
 # =====================================================
 # FILTER HELPER
 # =====================================================
@@ -34,53 +34,100 @@ def apply_filter(df, view, goal=None, sub_goal=None):
 
 def render():
     require_login()
+
     st.header("🎮 Progress & Insights")
 
     df = load_data(st.session_state.user_id)
 
+    
+
+    
+
+    completed = df[df["completed"] == 1]
+
+    
+
+    
+
+    today = date.today().isoformat()
+    grace = is_grace_day(st.session_state.user_id, today)
+
+
     # -------------------------------------------------
     # DAY 0 EXPERIENCE
     # -------------------------------------------------
-    if df.empty:
-        st.subheader("🚀 Day 0")
-        st.info("Your goals are set. One small action today starts everything.")
-        return
+    today = date.today().isoformat()
 
-    total_days = active_days(df)
+    if not has_completion_today(st.session_state.user_id, today):
+        st.subheader("🚀 Day 0")
+        st.info(
+            "Welcome! Today is about **starting**, not finishing.\n\n"
+            "Check off **one habit today** to begin your journey."
+        )
+        st.caption("Momentum starts with one action.")
+        return
+ 
+
+
+
+    total_days = df["date"].dt.date.nunique()
     stage = get_stage(total_days)
+
 
     # -------------------------------------------------
     # FILTERS
     # -------------------------------------------------
-    st.subheader("🎯 Focus")
+    days_active = df["date"].dt.date.nunique()
 
-    view = st.radio(
-        "View",
-        ["Overall", "Main Goal", "Sub-goal"],
-        horizontal=True
-    )
+    if days_active >= 14:
+        st.subheader("🎯 Focus")
 
-    goal = sub_goal = None
-    if view in ["Main Goal", "Sub-goal"]:
-        goal = st.selectbox("Goal", sorted(df["goal"].unique()))
-
-    if view == "Sub-goal":
-        sub_goal = st.selectbox(
-            "Sub-goal",
-            sorted(df[df["goal"] == goal]["sub_goal"].unique())
+        view = st.radio(
+            "View",
+            ["Overall", "Main Goal", "Sub-goal"],
+            horizontal=True
         )
 
-    df_f = apply_filter(df, view, goal, sub_goal)
+        goal = sub_goal = None
+
+        if view in ["Main Goal", "Sub-goal"]:
+            goal = st.selectbox("Goal", sorted(df["goal"].unique()))
+
+        if view == "Sub-goal":
+            sub_goal = st.selectbox(
+                "Sub-goal",
+                sorted(df[df["goal"] == goal]["sub_goal"].unique())
+            )
+
+        df_f = apply_filter(df, view, goal, sub_goal)
+
+    else:
+        df_f = df
+        st.caption("🔓 Detailed filters unlock after 14 days of consistency.")
 
     # -------------------------------------------------
     # TOP SUMMARY
     # -------------------------------------------------
+    
     c1, c2, c3 = st.columns(3)
-    c1.metric("Active Days", total_days)
-    c2.metric("Consistency", f"{completion_rate(df_f)}%")
-    c3.metric("Stage", stage.capitalize())
+    
+    if grace:
+        c1.metric("Active Days", 1)
+        c2.metric("Consistency", "🌱 Started")
+        c3.metric("Stage", "Identity")
 
-    st.divider()
+        st.success(
+            "🎉 You’ve started your journey today.\n\n"
+            "This first step matters more than any percentage."
+        )
+
+    else:
+        total_days = df["date"].dt.date.nunique()
+        stage = get_stage(total_days)
+
+        c1.metric("Active Days", total_days)
+        c2.metric("Consistency", f"{completion_rate(df_f)}%")
+        c3.metric("Stage", stage.capitalize())
 
     # -------------------------------------------------
     # DONUT — GOAL CONTRIBUTION

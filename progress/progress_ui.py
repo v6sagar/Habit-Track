@@ -21,6 +21,8 @@ from progress.analytics import (
 from utils.session import require_login
 from datetime import date
 from progress.analytics import has_completion_today
+from progress.analytics import has_any_completion
+
 # =====================================================
 # FILTER HELPER
 # =====================================================
@@ -58,13 +60,13 @@ def render():
     # -------------------------------------------------
     today = date.today().isoformat()
 
-    if not has_completion_today(st.session_state.user_id, today):
+    if not has_any_completion(st.session_state.user_id):
         st.subheader("🚀 Day 0")
         st.info(
-            "Welcome! Today is about **starting**, not finishing.\n\n"
-            "Check off **one habit today** to begin your journey."
+            "Welcome! This is your starting line.\n\n"
+            "Check off **one habit** to begin your journey."
         )
-        st.caption("Momentum starts with one action.")
+        st.caption("This message will never appear again once you start.")
         return
  
 

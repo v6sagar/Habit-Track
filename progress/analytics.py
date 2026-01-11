@@ -243,3 +243,29 @@ def is_grace_day(user_id, today):
 
     return row[0] == today
 
+def has_any_completion(user_id):
+    """
+    Returns True if the user has EVER completed at least one habit.
+    Used ONLY for Day-0 detection.
+    """
+    from database.db import get_connection
+
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        SELECT 1
+        FROM daily_logs d
+        JOIN sub_goals s ON d.sub_goal_id = s.id
+        JOIN goals g ON s.goal_id = g.id
+        WHERE g.user_id = ?
+          AND d.completed = 1
+        LIMIT 1
+        """,
+        (user_id,)
+    )
+
+    return cur.fetchone() is not None
+
+

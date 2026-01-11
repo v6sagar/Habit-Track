@@ -58,13 +58,13 @@ def render():
     # -------------------------------------------------
     today = date.today().isoformat()
 
-    if not has_any_completion(st.session_state.user_id):
+    if not has_completion_today(st.session_state.user_id, today):
         st.subheader("🚀 Day 0")
         st.info(
-            "Welcome! Today is about starting.\n\n"
-            "Check off **one habit** to begin your journey."
+            "Welcome! Today is about **starting**, not finishing.\n\n"
+            "Check off **one habit today** to begin your journey."
         )
-        st.caption("This message will never appear again once you start.")
+        st.caption("Momentum starts with one action.")
         return
  
 
